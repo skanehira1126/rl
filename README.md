@@ -23,6 +23,18 @@ $ python3 runners/bandit_dqn.py 15000 10 3 \
     --alpha 0.005 --gamma 0.1 \
     --epsilon 1 --epsilon-decay 0.9995 \
     --random-state 20 
+
+# DQN with target network
+$ python3 runners/bandit_dqn_with_target_network.py 20000 10 3 20 \
+    --alpha 0.001 --gamma 0.1 \
+    --epsilon 1 --epsilon-decay 0.9997 \
+    --random-state 20
+
+# DQN with target network and experiment replay
+$ python3 runners/bandit_dqn_with_target_network_er.py 20000 10 3 1\ 
+    --alpha 0.001 --gamma 0.1 \
+    --epsilon 1 --epsilon-decay 0.9997 \
+    --random-state 20
 ```
 
 
