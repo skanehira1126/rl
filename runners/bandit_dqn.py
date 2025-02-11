@@ -1,11 +1,13 @@
 import argparse
 from logging import getLogger
 
+import numpy as np
+import torch
 from tqdm.auto import tqdm
 
-from rl.bandit.env import SlotMachineEnv
-from rl.bandit.history import QtableHistory
-from rl.bandit.qtable_agent import QtableAgent
+from rl.bandit.dqn_agent import DQNAgent
+from rl.bandit.env import MultiSetSlotEnv
+from rl.bandit.history import DQNHistory
 
 
 logger = getLogger(__name__)
@@ -15,6 +17,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("n_step", type=int)
     parser.add_argument("n_actions", type=int)
+    parser.add_argument("n_states", type=int)
     parser.add_argument("--alpha", type=float)
     parser.add_argument("--gamma", type=float)
     parser.add_argument("--epsilon", type=float)
@@ -27,6 +30,7 @@ def get_parser():
 def main(
     n_step: int,
     n_actions: int,
+    n_states: int,
     alpha: float,
     gamma: float,
     epsilon: float,
@@ -35,52 +39,64 @@ def main(
 ):
     # 初期設定
     # stateは1つ
-    agent = QtableAgent(
-        n_state=1,
+    agent = DQNAgent(
+        n_state=n_states,
         n_actions=n_actions,
         alpha=alpha,
         gamma=gamma,
+        device=torch.device("mps") if torch.mps.is_available() else torch.device("cpu"),
         epsilon=epsilon,
         epsilon_decay=epsilon_decay,
         random_state=random_state,
     )
-    state = 0
-    env = SlotMachineEnv(n_actions, random_state=random_state)
 
-    history = QtableHistory()
+    env = MultiSetSlotEnv(n_actions, n_states, random_state=random_state)
+    history = DQNHistory()
 
     # 進捗管理の変数
     total_reward = 0
 
     # 実行
     for i in tqdm(range(1, n_step + 1)):
-        act_idx = agent.select_action(state)
-        reward, done, info = env.step(act_idx)
+        current_state_idx = env.choice_slot()
+        next_state_idx = env.choice_slot()
 
-        agent.update_q_table(state=state, action=act_idx, next_state=0, reward=reward)
+        current_state = np.array([1 if i == current_state_idx else 0 for i in range(n_states)])
+        next_state = np.array([1 if i == next_state_idx else 0 for i in range(n_states)])
+
+        act_idx = agent.select_action(current_state)
+        reward, done, _ = env.step(current_state_idx, act_idx)
+
+        agent.update(
+            state=current_state,
+            action=act_idx,
+            reward=reward,
+            next_state=next_state,
+            done=done,
+        )
         agent.update_epsilon()
         total_reward += reward
-        history.log(agent.epsilon, agent.q_table, total_reward)
+        history.log(epsilon=agent.epsilon, reward=total_reward)
 
         # print(f"Step {i} / {n_step} Total reward: {total_reward} reward: {reward}")
 
     print("========== Result")
-    print("Q Table")
-    print(agent.q_table)
-
     print("Probabilities of slots")
     print(env.probs)
 
     print("=========== Trial 100 times")
     total_reward = 0
     for _ in tqdm(range(100)):
-        act_index = agent.select_best_action(state)
-        reward, done, info = env.step(act_index)
+        current_state_idx = env.choice_slot()
+        current_state = np.array([1 if i == current_state_idx else 0 for i in range(n_states)])
+
+        act_index = agent.select_best_action(current_state)
+        reward, done, _ = env.step(current_state_idx, act_index)
 
         total_reward += reward
     print(f"Total reward: {total_reward}")
 
-    history.plot_qtable_history()
+    history.plot_history()
 
 
 if __name__ == "__main__":
